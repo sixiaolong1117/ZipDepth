@@ -11,21 +11,25 @@ build/
 
 # Virtual environments
 venv/
+venv*/
 env/
 .venv/
 
-# Checkpoints & model weights
-# (zipdepth_base.pth is intentionally tracked — see checkpoints/)
+# Checkpoints, model weights, and exported formats
+# (zipdepth_base.pth & _npu.pth are intentionally tracked)
 checkpoints/**
 !checkpoints/zipdepth_base.pth
 !checkpoints/zipdepth_base_npu.pth
 *.pt
 *.onnx
 *.bin
+*.mlpackage
+*.mlmodel
 
 # Outputs
 output/
 eval_results/
+camera_snapshots/
 *_depth.mp4
 *_depth_frames/
 *_depth.jpg
