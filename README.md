@@ -253,7 +253,36 @@ python scripts/export.py \
 
 The output is saved next to the checkpoint by default. Pass `--output` to override the path.
 
+### CoreML
+
+Convert a compiled PyTorch model directly to Core ML (`mlprogram` format) for use on iOS / macOS:
+
+```bash
+# FP32 (default)
+python scripts/convert_coreml.py \
+  --ckpt checkpoints/zipdepth_base_npu.pth \
+  --output checkpoints/zipdepth.mlpackage
+
+# FP16 — enables ANE acceleration on Apple Silicon
+python scripts/convert_coreml.py \
+  --ckpt checkpoints/zipdepth_base_npu.pth \
+  --output checkpoints/zipdepth_fp16.mlpackage \
+  --compute-precision fp16
+```
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--ckpt` | required | Path to `.pth` checkpoint (recommend `zipdepth_base_npu.pth`) |
+| `--output` | auto | Output `.mlpackage` path |
+| `--image-size` | `384` | Input image size (width and height) |
+| `--compute-unit` | `all` | `all`, `cpu_only`, `cpu_and_gpu`, `cpu_and_ne` |
+| `--compute-precision` | `fp32` | `fp16` or `fp32` — FP16 enables ANE on Apple Silicon |
+
+The converter applies static-shape workarounds for operators incompatible with CoreML (e.g., `GlobalContextBlock`'s dynamic softmax attention). The output depth will differ slightly (~5%) from the PyTorch version, but remains qualitatively consistent.
+
 ---
+
+
 
 ## 📱 Mobile / Edge Deployment
 
@@ -265,6 +294,84 @@ Both checkpoints can be exported and run on-device — you're free to try either
 Typical path: export to ONNX (see above), then convert to your target runtime — **ONNX Runtime Mobile**, **CoreML** (iOS), **TFLite** (Android), or **NCNN**. Starting from the NPU checkpoint maximizes the chance of a clean, fully-supported conversion.
 
 On-device latency and operator-level profiling across hardware are reported in the **Deployment Profiling** section of the supplementary material.
+
+---
+
+## 🖥️ CoreML Inference (macOS)
+
+After converting to CoreML, use `infer_coreml.py` for image, folder, video, or real-time camera inference on macOS:
+
+```bash
+# Single image
+python scripts/infer_coreml.py \
+  --model checkpoints/zipdepth.mlpackage \
+  --input image.jpg \
+  --output depth.jpg
+
+# Folder of images
+python scripts/infer_coreml.py \
+  --model checkpoints/zipdepth.mlpackage \
+  --input /path/to/images/ \
+  --output output/depth/
+
+# Video
+python scripts/infer_coreml.py \
+  --model checkpoints/zipdepth.mlpackage \
+  --input video.mp4
+```
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--model` | required | Path to `.mlpackage` |
+| `--input` | required | Image, folder, or video (not needed with `--camera`) |
+| `--output` | auto | Output path |
+| `--compute-unit` | `all` | `all`, `cpu_only`, `cpu_and_gpu`, `cpu_and_ne` |
+| `--warmup` | `3` | Warmup iterations — eliminates first-run JIT compilation overhead |
+| `--save-raw` | off | Also save depth map as `.npy` |
+
+### Real-time Camera
+
+```bash
+python scripts/infer_coreml.py \
+  --model checkpoints/zipdepth.mlpackage \
+  --camera
+
+# Custom camera and display size
+python scripts/infer_coreml.py \
+  --model checkpoints/zipdepth.mlpackage \
+  --camera --camera-id 0 --camera-res 480
+```
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--camera` | off | Enable live camera mode |
+| `--camera-id` | `0` | Camera device index |
+| `--camera-res` | `480` | Display window height in pixels |
+
+On Apple Silicon (M1+) the model runs at **~700 FPS** (pure inference) via ANE, so real-time 30 FPS camera processing leaves ample headroom. Controls: `q`/`ESC` to quit, `s` to save a snapshot.
+
+> **⚠ Camera Permission:** macOS requires camera access. Grant it in **System Settings → Privacy & Security → Camera** for your terminal application.
+
+### Benchmark
+
+Compare performance across all compute units:
+
+```bash
+python scripts/infer_coreml.py \
+  --model checkpoints/zipdepth.mlpackage \
+  --bench --bench-iters 100
+```
+
+Example output on Apple Silicon (M-series, 384×384):
+
+```text
+Compute Unit         Mean(ms)    Min(ms)    Std(ms)        FPS
+----------------------------------------------------------
+all                    1.38       1.29       0.07        724
+cpu_only               6.29       5.77       0.46        159
+cpu_and_gpu            2.40       1.83       0.59        417
+cpu_and_ne             1.37       1.25       0.08        730
+```
 
 ---
 
